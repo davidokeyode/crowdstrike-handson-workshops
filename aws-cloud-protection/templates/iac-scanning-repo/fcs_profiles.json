@@ -1,0 +1,12 @@
+{
+    "default": {
+        "falcon_region": "us-1",
+        "client_id": "<your-client-id>",
+        "client_secret": "<your-client-secret>"
+   },
+   "us-2": {
+        "falcon_region": "us-2",
+        "client_id": "<your-client-id>",
+        "client_secret": "<your-client-secret>"
+   }
+}

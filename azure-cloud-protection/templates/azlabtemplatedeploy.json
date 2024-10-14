@@ -1,0 +1,1006 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "username": {
+            "type": "string",
+            "defaultValue": "azadmin",
+            "metadata": {
+                "description": "Provide administrative user account for resources"
+            }
+        },
+        "password": {
+            "type": "securestring",
+            "metadata": {
+                "description": "Provide password for resources"
+            }
+        },
+        "aksVersion": {
+            "type": "string",
+            "metadata": {
+                "description": "Provide the version of Kubernetes to deploy"
+            },
+            "defaultValue": "1.29.7",
+            "allowedValues": [
+                "1.29.7",
+                "1.29.6",
+                "1.29.5",
+                "1.30.0",
+                "1.30.1",
+                "1.30.2"
+            ]
+        },
+        "storageAccountType": {
+            "type": "string",
+            "defaultValue": "Standard_LRS",
+            "allowedValues": [
+                "Standard_LRS",
+                "Standard_ZRS",
+                "Standard_GRS",
+                "Standard_RAGRS",
+                "Premium_LRS"
+            ]
+        },
+        "resourceTags": {
+            "type": "object",
+            "defaultValue": {
+                "Workshop": "CrowdStrike Azure Cloud Protection"
+            }
+        },
+        "_artifactsLocation": {
+            "type": "string",
+            "metadata": {
+                "description": "The base URI where artifacts required by this template are located including a trailing '/'"
+            },
+            "defaultValue": "[deployment().properties.templateLink.uri]"
+        },
+        "_artifactsLocationSasToken": {
+            "type": "securestring",
+            "defaultValue": "",
+            "metadata": {
+                "description": "SAS Token for accessing script path"
+            }
+        }
+    },
+    "variables": {
+        "vmNameWindows": "azlab-win",
+        "vmNameLinux": "azlab-linux",
+        "vmSize": "Standard_D2s_v3",
+        "vmSizeWin": "Standard_D2s_v3",
+        "availabilitySetName": "azlab-as",
+        "vNetName": "azlab-vnet",
+        "vNetAddressPrefix": "10.10.0.0/16",
+        "subnetName": "default",
+        "subnetAddressPrefix": "10.10.1.0/24",
+        "vNetId": "[resourceId('Microsoft.Network/virtualNetworks', variables('vNetName'))]",
+        "subnetRef": "[concat(variables('vNetId'),'/subnets/', variables('subnetName'))]",
+        "nsgName": "azlab-nsg",
+        "windowsOffer": "WindowsServer",
+        "windowsSku": "2019-Datacenter",
+        "windowsPublisher": "MicrosoftWindowsServer",
+        "linuxOffer": "0001-com-ubuntu-server-focal",
+        "linuxSku": "20_04-lts",
+        "linuxPublisher": "Canonical",
+        "storageName": "[toLower(concat('azlabsa', uniqueString(subscription().subscriptionId)))]",
+        "blobContainerName": "confidential",
+        "appServicePlanName": "azlab-splan",
+        "funcAppServicePlanName": "azlab-splan-func",
+        "appServiceName": "[toLower(concat('azlab-app-', uniqueString(subscription().subscriptionId)))]",
+        "kvName": "[toLower(concat('azlab-kv-',uniqueString(subscription().subscriptionId)))]",
+        "functionName": "[toLower(concat('azlab-fa-',uniqueString(subscription().subscriptionId)))]",
+        "containerRegistryName": "[toLower(concat('azlabcr', uniqueString(subscription().subscriptionId)))]",
+        "sqlServerName": "[toLower(concat('azlab-sql-',uniqueString(subscription().subscriptionId)))]",
+        "sqlDatabaseName": "azlab-db",
+        "aksClusterName": "azlab-aks",
+        "aksDNSPrefix": "azlab-aks",
+        "aksNetworkPlugin": "kubenet",
+        "aksVNetName": "[concat(variables('aksClusterName'), '-vnet')]",
+        "aksVNetAddressPrefix": "10.0.0.0/16",
+        "aksSubnetName": "aks-subnet",
+        "aksSubnetAddressPrefix": "10.0.0.0/24",
+        "scriptUrl": "[uri(parameters('_artifactsLocation'),concat('installscript.ps1',parameters('_artifactsLocationSasToken')))]",
+        "csvFileUrl": "https://raw.githubusercontent.com/davidokeyode/azure-offensive/refs/heads/master/sensitive_customer_private_information.csv",
+        "csvFileName": "sensitive_customer_private_information.csv",
+        "sourceImageRegistry": "doprivateacr.azurecr.io",
+        "sourceImageName": "tomcat-webshell:latest",
+        "targetImageName": "tomcat-webshell:latest",
+        "deploymentScriptIdentityName": "DeploymentScriptIdentity",
+        "storageBlobDataContributorRoleId": "ba92f5b4-2d11-453d-a403-e96b0029c9fe",
+        "storageRoleAssignmentId": "[guid(resourceGroup().id, variables('deploymentScriptIdentityName'), 'StorageAccountContributor')]",
+        "acrRoleAssignmentId1": "[guid(resourceGroup().id, variables('deploymentScriptIdentityName'), 'ACRPush')]",
+        "acrRoleAssignmentId2": "[guid(resourceGroup().id, variables('deploymentScriptIdentityName'), 'ACROwner')]"
+    },
+    "resources": [
+        {
+            "type": "Microsoft.Network/networkSecurityGroups",
+            "apiVersion": "2017-03-01",
+            "name": "[variables('nsgName')]",
+            "location": "[resourceGroup().location]",
+            "tags": "[parameters('resourceTags')]",
+            "properties": {
+                "securityRules": [
+                    {
+                        "name": "AllowRDP",
+                        "properties": {
+                            "access": "Allow",
+                            "description": "Inbound RDP rule",
+                            "direction": "Inbound",
+                            "destinationAddressPrefix": "*",
+                            "protocol": "Tcp",
+                            "destinationPortRange": 3389,
+                            "sourcePortRange": "*",
+                            "priority": 1000,
+                            "sourceAddressPrefix": "*"
+                        }
+                    },
+                    {
+                        "name": "AllowSSH",
+                        "properties": {
+                            "access": "Allow",
+                            "description": "Inbound SSH rule",
+                            "direction": "Inbound",
+                            "destinationAddressPrefix": "*",
+                            "protocol": "Tcp",
+                            "destinationPortRange": 22,
+                            "sourcePortRange": "*",
+                            "priority": 1100,
+                            "sourceAddressPrefix": "*"
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "apiVersion": "2018-08-01",
+            "type": "Microsoft.Network/publicIPAddresses",
+            "name": "[concat(variables('vmNameWindows'), '-pip')]",
+            "location": "[resourceGroup().location]",
+            "tags": "[parameters('resourceTags')]",
+            "properties": {
+                "publicIPAllocationMethod": "Dynamic",
+                "dnsSettings": {
+                    "domainNameLabel": "[toLower(concat(variables('vmNameWindows'), uniqueString(subscription().subscriptionId)))]"
+                }
+            }
+        },
+        {
+            "apiVersion": "2018-08-01",
+            "type": "Microsoft.Network/publicIPAddresses",
+            "name": "[concat(variables('vmNameLinux'), '-pip')]",
+            "location": "[resourceGroup().location]",
+            "tags": "[parameters('resourceTags')]",
+            "properties": {
+                "publicIPAllocationMethod": "Dynamic",
+                "dnsSettings": {
+                    "domainNameLabel": "[toLower(concat(variables('vmNameLinux'), uniqueString(subscription().subscriptionId)))]"
+                }
+            }
+        },
+        {
+            "apiVersion": "2018-08-01",
+            "type": "Microsoft.Network/virtualNetworks",
+            "name": "[variables('vNetName')]",
+            "location": "[resourceGroup().location]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/networkSecurityGroups/', variables('nsgName'))]"
+            ],
+            "tags": "[parameters('resourceTags')]",
+            "properties": {
+                "addressSpace": {
+                    "addressPrefixes": [
+                        "[variables('vNetAddressPrefix')]"
+                    ]
+                },
+                "subnets": [
+                    {
+                        "name": "[variables('subnetName')]",
+                        "properties": {
+                            "addressPrefix": "[variables('subnetAddressPrefix')]",
+                            "networkSecurityGroup": {
+                                "id": "[resourceId('Microsoft.Network/networkSecurityGroups/', variables('nsgName'))]"
+                            }
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "apiVersion": "2018-04-01",
+            "type": "Microsoft.Network/networkInterfaces",
+            "name": "[concat(variables('vmNameWindows'), '-nic')]",
+            "location": "[resourceGroup().location]",
+            "dependsOn": [
+                "[concat('Microsoft.Network/publicIPAddresses/', variables('vmNameWindows'), '-pip')]",
+                "[concat('Microsoft.Network/virtualNetworks/', variables('vNetName'))]"
+            ],
+            "properties": {
+                "ipConfigurations": [
+                    {
+                        "name": "ipconfig1",
+                        "properties": {
+                            "privateIPAllocationMethod": "Dynamic",
+                            "publicIPAddress": {
+                                "id": "[resourceId('Microsoft.Network/publicIPAddresses', concat(variables('vmNameWindows'), '-pip'))]"
+                            },
+                            "subnet": {
+                                "id": "[variables('subnetRef')]"
+                            }
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "apiVersion": "2018-04-01",
+            "type": "Microsoft.Network/networkInterfaces",
+            "name": "[concat(variables('vmNameLinux'), '-nic')]",
+            "location": "[resourceGroup().location]",
+            "dependsOn": [
+                "[concat('Microsoft.Network/publicIPAddresses/', variables('vmNameLinux'), '-pip')]",
+                "[concat('Microsoft.Network/virtualNetworks/', variables('vNetName'))]"
+            ],
+            "properties": {
+                "ipConfigurations": [
+                    {
+                        "name": "ipconfig1",
+                        "properties": {
+                            "privateIPAllocationMethod": "Dynamic",
+                            "publicIPAddress": {
+                                "id": "[resourceId('Microsoft.Network/publicIPAddresses', concat(variables('vmNameLinux'), '-pip'))]"
+                            },
+                            "subnet": {
+                                "id": "[variables('subnetRef')]"
+                            }
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "type": "Microsoft.Compute/availabilitySets",
+            "apiVersion": "2018-10-01",
+            "name": "[variables('availabilitySetName')]",
+            "location": "[resourceGroup().location]",
+            "properties": {
+                "platformFaultDomainCount": 2,
+                "platformUpdateDomainCount": 3
+            },
+            "sku": {
+                "name": "Aligned"
+            }
+        },
+        {
+            "apiVersion": "2018-10-01",
+            "type": "Microsoft.Compute/virtualMachines",
+            "name": "[concat(variables('vmNameWindows'))]",
+            "location": "[resourceGroup().location]",
+            "identity": {
+                "type": "SystemAssigned"
+            },
+            "dependsOn": [
+                "[concat('Microsoft.Network/networkinterfaces/', variables('vmNameWindows'), '-nic')]",
+                "[resourceId('Microsoft.Compute/availabilitySets/', variables('availabilitySetName'))]"
+            ],
+            "tags": "[parameters('resourceTags')]",
+            "properties": {
+                "availabilitySet": {
+                    "id": "[resourceId('Microsoft.Compute/availabilitySets/', variables('availabilitySetName'))]"
+                },
+                "hardwareprofile": {
+                    "vmsize": "[variables('vmSizeWin')]"
+                },
+                "osProfile": {
+                    "computerName": "[concat(variables('vmNameWindows'))]",
+                    "adminusername": "[parameters('username')]",
+                    "adminpassword": "[parameters('password')]"
+                },
+                "storageProfile": {
+                    "imageReference": {
+                        "publisher": "[variables('windowsPublisher')]",
+                        "offer": "[variables('windowsOffer')]",
+                        "version": "latest",
+                        "sku": "[variables('windowsSku')]"
+                    },
+                    "osdisk": {
+                        "name": "[concat(variables('vmNameWindows'), '-osdisk')]",
+                        "createOption": "FromImage",
+                        "managedDisk": {
+                            "storageAccountType": "Standard_LRS"
+                        },
+                        "caching": "ReadWrite"
+                    }
+                },
+                "networkprofile": {
+                    "networkinterfaces": [
+                        {
+                            "id": "[resourceId('Microsoft.Network/networkinterfaces', concat(variables('vmNameWindows'),'-nic'))]"
+                        }
+                    ]
+                }
+            }
+        },
+        {
+            "type": "Microsoft.Compute/virtualMachines/extensions",
+            "apiVersion": "2019-07-01",
+            "name": "[concat(variables('vmNameWindows'),'/installscript1')]",
+            "location": "[resourceGroup().location]",
+            "tags": {
+                "displayName": "Install script for Windows VM"
+            },
+            "dependsOn": [
+                "[resourceId('Microsoft.Compute/virtualMachines', variables('vmNameWindows'))]"
+            ],
+            "properties": {
+                "publisher": "Microsoft.Compute",
+                "type": "CustomScriptExtension",
+                "typeHandlerVersion": "1.10",
+                "autoUpgradeMinorVersion": true,
+                "settings": {
+                    "fileUris": [
+                        "[variables('scriptUrl')]"
+                    ]
+                },
+                "protectedSettings": {
+                    "commandToExecute": "[concat('powershell -ExecutionPolicy Bypass -file installscript.ps1 -UserName ',parameters('username'))]"
+                }
+            }
+        },
+        {
+            "apiVersion": "2018-10-01",
+            "type": "Microsoft.Compute/virtualMachines",
+            "name": "[concat(variables('vmNameLinux'))]",
+            "location": "[resourceGroup().location]",
+            "identity": {
+                "type": "SystemAssigned"
+            },
+            "dependsOn": [
+                "[concat('Microsoft.Network/networkinterfaces/', variables('vmNameLinux'), '-nic')]",
+                "[resourceId('Microsoft.Compute/availabilitySets/', variables('availabilitySetName'))]"
+            ],
+            "tags": "[parameters('resourceTags')]",
+            "properties": {
+                "availabilitySet": {
+                    "id": "[resourceId('Microsoft.Compute/availabilitySets/', variables('availabilitySetName'))]"
+                },
+                "hardwareprofile": {
+                    "vmsize": "[variables('vmSize')]"
+                },
+                "osProfile": {
+                    "computerName": "[concat(variables('vmNameLinux'))]",
+                    "adminusername": "[parameters('username')]",
+                    "adminpassword": "[parameters('password')]"
+                },
+                "storageProfile": {
+                    "imageReference": {
+                        "publisher": "[variables('linuxPublisher')]",
+                        "offer": "[variables('linuxOffer')]",
+                        "version": "latest",
+                        "sku": "[variables('linuxSku')]"
+                    },
+                    "osdisk": {
+                        "name": "[concat(variables('vmNameLinux'), '-osdisk')]",
+                        "createOption": "FromImage",
+                        "managedDisk": {
+                            "storageAccountType": "Standard_LRS"
+                        },
+                        "caching": "ReadWrite"
+                    }
+                },
+                "networkprofile": {
+                    "networkinterfaces": [
+                        {
+                            "id": "[resourceId('Microsoft.Network/networkinterfaces', concat(variables('vmNameLinux'),'-nic'))]"
+                        }
+                    ]
+                }
+            }
+        },
+        {
+            "type": "Microsoft.Compute/virtualMachines/extensions",
+            "name": "[concat(variables('vmNameLinux'),'/linuxpostinstall')]",
+            "apiVersion": "2020-06-01",
+            "location": "[resourceGroup().location]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Compute/virtualMachines/', variables('vmNameLinux'))]"
+            ],
+            "properties": {
+                "publisher": "Microsoft.Azure.Extensions",
+                "type": "CustomScript",
+                "typeHandlerVersion": "2.0",
+                "autoUpgradeMinorVersion": true,
+                "settings": {
+                    "fileUris": [
+                        "[uri(parameters('_artifactsLocation'), concat('linuxpostinstall.sh', parameters('_artifactsLocationSasToken')))]"
+                    ],
+                    "commandToExecute": "sh linuxpostinstall.sh"
+                }
+            }
+        },
+        {
+            "name": "[variables('storageName')]",
+            "type": "Microsoft.Storage/storageAccounts",
+            "location": "[resourceGroup().location]",
+            "apiVersion": "2019-06-01",
+            "sku": {
+                "name": "[parameters('storageAccountType')]"
+            },
+            "dependsOn": [],
+            "tags": "[parameters('resourceTags')]",
+            "kind": "StorageV2",
+            "properties": {
+                "supportsHttpsTrafficOnly": false
+            }
+        },
+        {
+            "type": "Microsoft.Storage/storageAccounts/blobServices",
+            "apiVersion": "2019-06-01",
+            "name": "[concat(variables('storageName'), '/default')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Storage/storageAccounts', variables('storageName'))]"
+            ],
+            "properties": {
+                "cors": {
+                    "corsRules": []
+                },
+                "deleteRetentionPolicy": {
+                    "enabled": true,
+                    "days": 7
+                },
+                "logging": {
+                    "version": "1.0",
+                    "delete": true,
+                    "read": true,
+                    "write": true,
+                    "retentionPolicy": {
+                        "enabled": true,
+                        "days": 7
+                    }
+                }
+            }
+        },
+        {
+            "type": "Microsoft.Storage/storageAccounts/blobServices/containers",
+            "apiVersion": "2023-01-01",
+            "name": "[format('{0}/{1}/{2}', variables('storageName'), 'default', variables('blobContainerName'))]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Storage/storageAccounts/blobServices', variables('storageName'), 'default')]"
+            ]
+        },
+        {
+            "name": "[variables('appServicePlanName')]",
+            "type": "Microsoft.Web/serverfarms",
+            "location": "[resourceGroup().location]",
+            "apiVersion": "2022-03-01",
+            "sku": {
+                "name": "F1"
+            },
+            "dependsOn": [],
+            "tags": "[parameters('resourceTags')]",
+            "properties": {
+                "name": "[variables('appServicePlanName')]",
+                "numberOfWorkers": 1
+            }
+        },
+        {
+            "name": "[variables('funcAppServicePlanName')]",
+            "type": "Microsoft.Web/serverfarms",
+            "location": "[resourceGroup().location]",
+            "apiVersion": "2022-03-01",
+            "sku": {
+                "name": "Y1",
+                "tier": "Dynamic"
+            },
+            "dependsOn": [],
+            "tags": "[parameters('resourceTags')]",
+            "properties": {
+                "name": "[variables('funcAppServicePlanName')]",
+                "numberOfWorkers": 1
+            }
+        },
+        {
+            "name": "[variables('appServiceName')]",
+            "type": "Microsoft.Web/sites",
+            "location": "[resourceGroup().location]",
+            "apiVersion": "2015-08-01",
+            "dependsOn": [
+                "[resourceId('Microsoft.Web/serverfarms', variables('appServicePlanName'))]"
+            ],
+            "tags": "[parameters('resourceTags')]",
+            "properties": {
+                "serverFarmId": "[resourceId('Microsoft.Web/serverfarms', variables('appServicePlanName'))]"
+            }
+        },
+        {
+            "type": "Microsoft.KeyVault/vaults",
+            "name": "[variables('kvName')]",
+            "apiVersion": "2016-10-01",
+            "location": "[resourceGroup().location]",
+            "properties": {
+                "sku": {
+                    "family": "A",
+                    "name": "standard"
+                },
+                "tenantId": "[subscription().tenantid]",
+                "accessPolicies": [
+                    {
+                        "tenantId": "[subscription().tenantid]",
+                        "objectId": "[reference(resourceId('Microsoft.Web/sites', variables('functionName')),'2019-08-01', 'full').identity.principalId]",
+                        "permissions": {
+                            "keys": [],
+                            "secrets": [
+                                "get"
+                            ],
+                            "certificates": []
+                        }
+                    }
+                ],
+                "enabledForDeployment": false,
+                "enabledForDiskEncryption": false,
+                "enabledForTemplateDeployment": false
+            },
+            "dependsOn": [
+                "[resourceId('Microsoft.Web/sites', variables('appServiceName'))]"
+            ],
+            "tags": "[parameters('resourceTags')]"
+        },
+        {
+            "type": "Microsoft.Web/sites",
+            "kind": "functionapp,linux",
+            "name": "[variables('functionName')]",
+            "apiVersion": "2022-03-01",
+            "location": "[resourceGroup().location]",
+            "identity": {
+                "type": "SystemAssigned"
+            },
+            "properties": {
+                "serverFarmId": "[resourceId('Microsoft.Web/serverfarms', variables('funcAppServicePlanName'))]",
+                "siteConfig": {
+                    "appSettings": [
+                        {
+                            "name": "AzureWebJobsStorage",
+                            "value": "[concat('DefaultEndpointsProtocol=https;AccountName=', variables('storageName'), ';AccountKey=', listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('storageName')),'2015-05-01-preview').key1)]"
+                        },
+                        {
+                            "name": "WEBSITE_CONTENTAZUREFILECONNECTIONSTRING",
+                            "value": "[concat('DefaultEndpointsProtocol=https;AccountName=', variables('storageName'), ';AccountKey=', listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('storageName')),'2015-05-01-preview').key1)]"
+                        },
+                        {
+                            "name": "WEBSITE_CONTENTSHARE",
+                            "value": "[toLower(variables('functionName'))]"
+                        },
+                        {
+                            "name": "FUNCTIONS_EXTENSION_VERSION",
+                            "value": "~4"
+                        },
+                        {
+                            "name": "WEBSITE_NODE_DEFAULT_VERSION",
+                            "value": "~10"
+                        },
+                        {
+                            "name": "FUNCTIONS_WORKER_RUNTIME",
+                            "value": "dotnet"
+                        }
+                    ]
+                }
+            },
+            "dependsOn": [
+                "[resourceId('Microsoft.Web/serverfarms', variables('funcAppServicePlanName'))]"
+            ],
+            "tags": "[parameters('resourceTags')]"
+        },
+        {
+            "type": "Microsoft.Network/virtualNetworks",
+            "apiVersion": "2020-06-01",
+            "name": "[variables('aksVNetName')]",
+            "location": "[resourceGroup().location]",
+            "properties": {
+                "addressSpace": {
+                    "addressPrefixes": [
+                        "[variables('aksVNetAddressPrefix')]"
+                    ]
+                },
+                "subnets": [
+                    {
+                        "name": "[variables('aksSubnetName')]",
+                        "properties": {
+                            "addressPrefix": "[variables('aksSubnetAddressPrefix')]"
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "apiVersion": "2020-03-01",
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/virtualNetworks', variables('aksVNetName'))]"
+            ],
+            "type": "Microsoft.ContainerService/managedClusters",
+            "location": "[resourceGroup().location]",
+            "name": "[variables('aksClusterName')]",
+            "properties": {
+                "kubernetesVersion": "[parameters('aksVersion')]",
+                "dnsPrefix": "[variables('aksDNSPrefix')]",
+                "agentPoolProfiles": [
+                    {
+                        "name": "agentpool",
+                        "count": 1,
+                        "vmSize": "[variables('vmSize')]",
+                        "osType": "Linux",
+                        "storageProfile": "ManagedDisks",
+                        "type": "VirtualMachineScaleSets",
+                        "mode": "System"
+                    }
+                ],
+                "nodeResourceGroup": "[variables('aksClusterName')]",
+                "networkProfile": {
+                    "loadBalancerSku": "standard",
+                    "networkPlugin": "[variables('aksNetworkPlugin')]",
+                    "networkPolicy": "calico",
+                    "serviceCidr": "10.0.0.0/16",
+                    "dnsServiceIP": "10.0.0.10",
+                    "dockerBridgeCidr": "172.17.0.1/16",
+                    "vnetSubnetID": "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('aksVNetName'), variables('aksSubnetName'))]"
+                }
+            },
+            "tags": "[parameters('resourceTags')]",
+            "identity": {
+                "type": "SystemAssigned"
+            }
+        },
+        {
+            "type": "Microsoft.Network/virtualNetworks/virtualNetworkPeerings",
+            "apiVersion": "2020-06-01",
+            "name": "[concat(variables('vNetName'), '/peering-to-aks')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/virtualNetworks', variables('vNetName'))]",
+                "[resourceId('Microsoft.Network/virtualNetworks', variables('aksVNetName'))]",
+                "[resourceId('Microsoft.ContainerService/managedClusters', variables('aksClusterName'))]"
+            ],
+            "properties": {
+                "allowVirtualNetworkAccess": true,
+                "allowForwardedTraffic": true,
+                "allowGatewayTransit": false,
+                "useRemoteGateways": false,
+                "remoteVirtualNetwork": {
+                    "id": "[resourceId('Microsoft.Network/virtualNetworks', variables('aksVNetName'))]"
+                }
+            }
+        },
+        {
+            "type": "Microsoft.Network/virtualNetworks/virtualNetworkPeerings",
+            "apiVersion": "2020-06-01",
+            "name": "[concat(variables('aksVNetName'), '/peering-to-vm')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/virtualNetworks', variables('vNetName'))]",
+                "[resourceId('Microsoft.Network/virtualNetworks', variables('aksVNetName'))]",
+                "[resourceId('Microsoft.ContainerService/managedClusters', variables('aksClusterName'))]"
+            ],
+            "properties": {
+                "allowVirtualNetworkAccess": true,
+                "allowForwardedTraffic": true,
+                "allowGatewayTransit": false,
+                "useRemoteGateways": false,
+                "remoteVirtualNetwork": {
+                    "id": "[resourceId('Microsoft.Network/virtualNetworks', variables('vNetName'))]"
+                }
+            }
+        },
+        {
+            "type": "Microsoft.Authorization/roleAssignments",
+            "apiVersion": "2020-04-01-preview",
+            "name": "[guid(resourceGroup().id, variables('vmNameWindows'), 'Owner')]",
+            "properties": {
+                "roleDefinitionId": "[concat('/subscriptions/', subscription().subscriptionId, '/providers/Microsoft.Authorization/roleDefinitions/', '8e3af657-a8ff-443c-a75c-2fe8c4bcb635')]",
+                "principalId": "[reference(resourceId('Microsoft.Compute/virtualMachines', variables('vmNameWindows')), '2019-07-01', 'full').identity.principalId]",
+                "principalType": "ServicePrincipal"
+            },
+            "dependsOn": [
+                "[resourceId('Microsoft.Compute/virtualMachines', variables('vmNameWindows'))]"
+            ]
+        },
+        {
+            "type": "Microsoft.Authorization/roleAssignments",
+            "apiVersion": "2020-04-01-preview",
+            "name": "[guid(resourceGroup().id, variables('vmNameWindows'), 'StorageBlobDataReader')]",
+            "properties": {
+                "roleDefinitionId": "[concat('/subscriptions/', subscription().subscriptionId, '/providers/Microsoft.Authorization/roleDefinitions/', '2a2b9908-6ea1-4ae2-8e65-a410df84e7d1')]",
+                "principalId": "[reference(resourceId('Microsoft.Compute/virtualMachines', variables('vmNameWindows')), '2019-07-01', 'full').identity.principalId]",
+                "principalType": "ServicePrincipal"
+            },
+            "dependsOn": [
+                "[resourceId('Microsoft.Compute/virtualMachines', variables('vmNameWindows'))]"
+            ]
+        },
+        {
+            "type": "Microsoft.Authorization/roleAssignments",
+            "apiVersion": "2020-04-01-preview",
+            "name": "[guid(resourceGroup().id, variables('vmNameLinux'), 'Owner')]",
+            "properties": {
+                "roleDefinitionId": "[concat('/subscriptions/', subscription().subscriptionId, '/providers/Microsoft.Authorization/roleDefinitions/', '8e3af657-a8ff-443c-a75c-2fe8c4bcb635')]",
+                "principalId": "[reference(resourceId('Microsoft.Compute/virtualMachines', variables('vmNameLinux')), '2019-07-01', 'full').identity.principalId]",
+                "principalType": "ServicePrincipal"
+            },
+            "dependsOn": [
+                "[resourceId('Microsoft.Compute/virtualMachines', variables('vmNameLinux'))]"
+            ]
+        },
+        {
+            "type": "Microsoft.Authorization/roleAssignments",
+            "apiVersion": "2020-04-01-preview",
+            "name": "[guid(resourceGroup().id, variables('vmNameLinux'), 'StorageBlobDataReader')]",
+            "properties": {
+                "roleDefinitionId": "[concat('/subscriptions/', subscription().subscriptionId, '/providers/Microsoft.Authorization/roleDefinitions/', '2a2b9908-6ea1-4ae2-8e65-a410df84e7d1')]",
+                "principalId": "[reference(resourceId('Microsoft.Compute/virtualMachines', variables('vmNameLinux')), '2019-07-01', 'full').identity.principalId]",
+                "principalType": "ServicePrincipal"
+            },
+            "dependsOn": [
+                "[resourceId('Microsoft.Compute/virtualMachines', variables('vmNameLinux'))]"
+            ]
+        },
+        {
+            "type": "Microsoft.ManagedIdentity/userAssignedIdentities",
+            "apiVersion": "2018-11-30",
+            "name": "[variables('deploymentScriptIdentityName')]",
+            "location": "[resourceGroup().location]"
+        },
+        {
+            "type": "Microsoft.Authorization/roleAssignments",
+            "apiVersion": "2020-04-01-preview",
+            "scope": "[format('Microsoft.Storage/storageAccounts/{0}', variables('storageName'))]",
+            "name": "[guid(resourceGroup().id, resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('deploymentScriptIdentityName')), variables('storageBlobDataContributorRoleId'))]",
+            "properties": {
+                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('storageBlobDataContributorRoleId'))]",
+                "principalId": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('deploymentScriptIdentityName'))).principalId]",
+                "principalType": "ServicePrincipal"
+            },
+            "dependsOn": [
+                "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('deploymentScriptIdentityName'))]",
+                "[resourceId('Microsoft.Storage/storageAccounts', variables('storageName'))]"
+            ]
+        },
+        {
+            "type": "Microsoft.Authorization/roleAssignments",
+            "apiVersion": "2020-04-01-preview",
+            "name": "[variables('storageRoleAssignmentId')]",
+            "properties": {
+                "roleDefinitionId": "[concat('/subscriptions/', subscription().subscriptionId, '/providers/Microsoft.Authorization/roleDefinitions/', '17d1049b-9a84-46fb-8f53-869881c3d3ab')]",
+                "principalId": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('deploymentScriptIdentityName')), '2018-11-30').principalId]",
+                "principalType": "ServicePrincipal"
+            },
+            "dependsOn": [
+                "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('deploymentScriptIdentityName'))]",
+                "[resourceId('Microsoft.Storage/storageAccounts', variables('storageName'))]"
+            ]
+        },
+        {
+            "type": "Microsoft.Authorization/roleAssignments",
+            "apiVersion": "2020-04-01-preview",
+            "name": "[variables('acrRoleAssignmentId1')]",
+            "properties": {
+                "roleDefinitionId": "[concat('/subscriptions/', subscription().subscriptionId, '/providers/Microsoft.Authorization/roleDefinitions/', '8311e382-0749-4cb8-b61a-304f252e45ec')]",
+                "principalId": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('deploymentScriptIdentityName')), '2018-11-30').principalId]",
+                "principalType": "ServicePrincipal"
+            },
+            "dependsOn": [
+                "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('deploymentScriptIdentityName'))]",
+                "[resourceId('Microsoft.ContainerRegistry/registries', variables('containerRegistryName'))]"
+            ]
+        },
+        {
+            "type": "Microsoft.Authorization/roleAssignments",
+            "apiVersion": "2020-04-01-preview",
+            "name": "[variables('acrRoleAssignmentId2')]",
+            "properties": {
+                "roleDefinitionId": "[concat('/subscriptions/', subscription().subscriptionId, '/providers/Microsoft.Authorization/roleDefinitions/', '8e3af657-a8ff-443c-a75c-2fe8c4bcb635')]",
+                "principalId": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('deploymentScriptIdentityName')), '2018-11-30').principalId]",
+                "principalType": "ServicePrincipal"
+            },
+            "dependsOn": [
+                "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('deploymentScriptIdentityName'))]",
+                "[resourceId('Microsoft.ContainerRegistry/registries', variables('containerRegistryName'))]"
+            ]
+        },
+        {
+            "type": "Microsoft.Resources/deploymentScripts",
+            "apiVersion": "2020-10-01",
+            "name": "importCsvToBlob",
+            "location": "[resourceGroup().location]",
+            "kind": "AzurePowerShell",
+            "identity": {
+                "type": "UserAssigned",
+                "userAssignedIdentities": {
+                    "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('deploymentScriptIdentityName'))]": {}
+                }
+            },
+            "properties": {
+                "azPowerShellVersion": "5.0",
+                "scriptContent": "$ErrorActionPreference = 'Stop'\n\n$storageAccount = Get-AzStorageAccount -ResourceGroupName $env:ResourceGroupName -AccountName $env:StorageAccountName\n$ctx = $storageAccount.Context\n\n$containerName = $env:ContainerName\n$fileName = $env:FileName\n$fileUrl = $env:FileUrl\n\n# Download the file\ntry {\n    Invoke-WebRequest -Uri $fileUrl -OutFile $fileName\n    Write-Output \"Successfully downloaded $fileName\"\n}\ncatch {\n    Write-Error \"Failed to download file from $fileUrl. Error: $_\"\n    exit 1\n}\n\n# Upload the file to the blob container\ntry {\n    Set-AzStorageBlobContent -File $fileName -Container $containerName -Blob $fileName -Context $ctx -Force\n    Write-Output \"Successfully uploaded $fileName to container $containerName in storage account $env:StorageAccountName\"\n}\ncatch {\n    Write-Error \"Failed to upload file to blob container. Error: $_\"\n    exit 1\n}\n\nWrite-Output \"CSV import process completed successfully\"\n",
+                "timeout": "PT30M",
+                "cleanupPreference": "OnSuccess",
+                "retentionInterval": "P1D",
+                "environmentVariables": [
+                    {
+                        "name": "ResourceGroupName",
+                        "value": "[resourceGroup().name]"
+                    },
+                    {
+                        "name": "StorageAccountName",
+                        "value": "[variables('storageName')]"
+                    },
+                    {
+                        "name": "ContainerName",
+                        "value": "[variables('blobContainerName')]"
+                    },
+                    {
+                        "name": "FileName",
+                        "value": "[variables('csvFileName')]"
+                    },
+                    {
+                        "name": "FileUrl",
+                        "value": "[variables('csvFileUrl')]"
+                    }
+                ]
+            },
+            "dependsOn": [
+                "[resourceId('Microsoft.Storage/storageAccounts/blobServices/containers', variables('storageName'), 'default', variables('blobContainerName'))]",
+                "[resourceId('Microsoft.Storage/storageAccounts', variables('storageName'))]",
+                "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('deploymentScriptIdentityName'))]",
+                "[resourceId('Microsoft.Authorization/roleAssignments', variables('storageRoleAssignmentId'))]"
+            ]
+        },
+        {
+            "name": "[variables('containerRegistryName')]",
+            "type": "Microsoft.ContainerRegistry/registries",
+            "apiVersion": "2019-05-01",
+            "location": "[resourceGroup().location]",
+            "sku": {
+                "name": "Basic"
+            },
+            "properties": {
+                "adminUserEnabled": true
+            }
+        },
+        {
+            "type": "Microsoft.Resources/deploymentScripts",
+            "apiVersion": "2020-10-01",
+            "name": "importImageToACR",
+            "location": "[resourceGroup().location]",
+            "kind": "AzureCLI",
+            "identity": {
+                "type": "UserAssigned",
+                "userAssignedIdentities": {
+                    "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('deploymentScriptIdentityName'))]": {}
+                }
+            },
+            "properties": {
+                "azCliVersion": "2.30.0",
+                "scriptContent": "#!/bin/bash\nset -e\n\nsleep 60\n\naz acr import \\\n  --name $ContainerRegistryName \\\n  --source $SourceImageRegistry/$SourceImageName \\\n  --image $TargetImageName \\\n  --resource-group $ResourceGroupName\n\necho \"Successfully imported image $SourceImageName to $ContainerRegistryName as $TargetImageName\"\n",
+                "timeout": "PT30M",
+                "cleanupPreference": "OnSuccess",
+                "retentionInterval": "P1D",
+                "environmentVariables": [
+                    {
+                        "name": "ResourceGroupName",
+                        "value": "[resourceGroup().name]"
+                    },
+                    {
+                        "name": "ContainerRegistryName",
+                        "value": "[variables('containerRegistryName')]"
+                    },
+                    {
+                        "name": "SourceImageRegistry",
+                        "value": "[variables('sourceImageRegistry')]"
+                    },
+                    {
+                        "name": "SourceImageName",
+                        "value": "[variables('sourceImageName')]"
+                    },
+                    {
+                        "name": "TargetImageName",
+                        "value": "[variables('targetImageName')]"
+                    }
+                ]
+            },
+            "dependsOn": [
+                "[resourceId('Microsoft.ContainerRegistry/registries', variables('containerRegistryName'))]",
+                "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('deploymentScriptIdentityName'))]",
+                "[resourceId('Microsoft.Authorization/roleAssignments', variables('acrRoleAssignmentId1'))]",
+                "[resourceId('Microsoft.Authorization/roleAssignments', variables('acrRoleAssignmentId2'))]"
+            ]
+        },
+        {
+            "name": "[variables('sqlServerName')]",
+            "type": "Microsoft.Sql/servers",
+            "location": "[resourceGroup().location]",
+            "apiVersion": "2015-05-01-preview",
+            "dependsOn": [],
+            "tags": "[parameters('resourceTags')]",
+            "properties": {
+                "administratorLogin": "[parameters('username')]",
+                "administratorLoginPassword": "[parameters('password')]"
+            },
+            "resources": [
+                {
+                    "name": "AllowAzureIPs",
+                    "type": "firewallrules",
+                    "location": "[resourceGroup().location]",
+                    "apiVersion": "2015-05-01-preview",
+                    "dependsOn": [
+                        "[resourceId('Microsoft.Sql/servers', variables('sqlServerName'))]"
+                    ],
+                    "properties": {
+                        "startIpAddress": "0.0.0.0",
+                        "endIpAddress": "0.0.0.0"
+                    }
+                },
+                {
+                    "name": "[variables('sqlDatabaseName')]",
+                    "type": "databases",
+                    "location": "[resourceGroup().location]",
+                    "apiVersion": "2017-03-01-preview",
+                    "dependsOn": [
+                        "[resourceId('Microsoft.Sql/servers', variables('sqlServerName'))]"
+                    ],
+                    "tags": "[parameters('resourceTags')]",
+                    "sku": {
+                        "name": "Basic",
+                        "tier": "Basic",
+                        "capacity": 5
+                    },
+                    "properties": {
+                        "collation": "SQL_Latin1_General_CP1_CI_AS",
+                        "edition": "Basic",
+                        "sampleName": "AdventureWorksLT",
+                        "maxSizeBytes": "104857600"
+                    }
+                }
+            ]
+        }
+    ],
+    "outputs": {
+        "Linux VM Hostname": {
+            "type": "string",
+            "value": "[reference(concat(variables('vmNameLinux'), '-pip')).dnsSettings.fqdn]"
+        },
+        "Linux VM SSH Command": {
+            "type": "string",
+            "value": "[concat('ssh ', parameters('username'), '@', reference(concat(variables('vmNameLinux'), '-pip')).dnsSettings.fqdn)]"
+        },
+        "Windows VM Username": {
+            "type": "string",
+            "value": "[parameters('username')]"
+        },
+        "Windows VM Hostname": {
+            "type": "string",
+            "value": "[reference(concat(variables('vmNameWindows'), '-pip')).dnsSettings.fqdn]"
+        },
+        "AKS FQDN": {
+            "type": "string",
+            "value": "[reference(variables('aksClusterName')).fqdn]"
+        },
+        "ACR Name": {
+            "value": "[variables('containerRegistryName')]",
+            "type": "string"
+        },
+        "ACR FQDN": {
+            "value": "[reference(resourceId('Microsoft.ContainerRegistry/registries',variables('containerRegistryName')),'2019-12-01-preview').loginServer]",
+            "type": "string"
+        },
+        "SUBSCRIPTION ID": {
+            "value": "[subscription().subscriptionId]",
+            "type": "string"
+        },
+        "Key Vault": {
+            "type": "string",
+            "value": "[variables('kvName')]"
+        },
+        "SQL Database": {
+            "type": "string",
+            "value": "[variables('sqlDatabaseName')]"
+        },
+        "Function App Name": {
+            "type": "string",
+            "value": "[variables('functionName')]"
+        }
+    }
+}

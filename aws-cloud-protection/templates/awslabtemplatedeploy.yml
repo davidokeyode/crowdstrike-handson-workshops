@@ -1,0 +1,678 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'CrowdStrike Falcon AWS Workshop with ECS Fargate Service and Exec Command Enabled.'
+
+Parameters:
+  Username:
+    Type: String
+    Default: 'awslabadmin'
+    Description: 'Provide administrative user account for resources'
+
+  Password:
+    Type: String
+    NoEcho: true
+    Description: 'Provide password for resources'
+
+  KubernetesVersion:
+    Type: String
+    Default: '1.27'
+    AllowedValues:
+      - '1.27'
+      - '1.26'
+      - '1.25'
+    Description: 'Provide the version of Kubernetes to deploy'
+
+  KeyPairName:
+    Type: AWS::EC2::KeyPair::KeyName
+    Description: 'Name of an existing EC2 KeyPair to enable SSH access to the instances'
+
+Resources:
+  # VPC
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: '10.10.0.0/16'
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: 'awslab-vpc'
+
+  # Internet Gateway
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: 'awslab-igw'
+
+  # Attach Internet Gateway to VPC
+  VPCGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+
+  # Route Table
+  RouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: 'awslab-route-table'
+
+  # Route
+  Route:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref RouteTable
+      DestinationCidrBlock: '0.0.0.0/0'
+      GatewayId: !Ref InternetGateway
+
+  # Subnets in different Availability Zones
+  Subnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: '10.10.1.0/24'
+      MapPublicIpOnLaunch: true
+      AvailabilityZone: !Select [0, !GetAZs '']
+      Tags:
+        - Key: Name
+          Value: 'awslab-subnet-1'
+
+  Subnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: '10.10.2.0/24'
+      MapPublicIpOnLaunch: true
+      AvailabilityZone: !Select [1, !GetAZs '']
+      Tags:
+        - Key: Name
+          Value: 'awslab-subnet-2'
+
+  # Associate Route Table with Subnets
+  SubnetRouteTableAssociation1:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref Subnet1
+      RouteTableId: !Ref RouteTable
+
+  SubnetRouteTableAssociation2:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref Subnet2
+      RouteTableId: !Ref RouteTable
+
+  # Security Group for Instances
+  SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: 'Allow SSH, RDP, and necessary outbound traffic'
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: '0.0.0.0/0'
+        - IpProtocol: tcp
+          FromPort: 3389
+          ToPort: 3389
+          CidrIp: '0.0.0.0/0'
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          FromPort: -1
+          ToPort: -1
+          CidrIp: '0.0.0.0/0'
+      Tags:
+        - Key: Name
+          Value: 'awslab-sg'
+
+  # Security Group for ECS Service
+  ECSSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: 'Allow HTTP traffic for ECS Service'
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: '0.0.0.0/0'
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: '0.0.0.0/0'
+      Tags:
+        - Key: Name
+          Value: 'awslab-ecs-sg'
+
+  # Elastic IPs for VMs
+  LinuxEIP:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+
+  WindowsEIP:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+
+  # Network Interfaces
+  LinuxNetworkInterface:
+    Type: AWS::EC2::NetworkInterface
+    Properties:
+      SubnetId: !Ref Subnet1
+      GroupSet:
+        - !Ref SecurityGroup
+      Tags:
+        - Key: Name
+          Value: 'awslab-linux-nic'
+
+  WindowsNetworkInterface:
+    Type: AWS::EC2::NetworkInterface
+    Properties:
+      SubnetId: !Ref Subnet1
+      GroupSet:
+        - !Ref SecurityGroup
+      Tags:
+        - Key: Name
+          Value: 'awslab-windows-nic'
+
+  # Associate EIPs with Network Interfaces
+  LinuxEIPAssociation:
+    Type: AWS::EC2::EIPAssociation
+    Properties:
+      AllocationId: !GetAtt LinuxEIP.AllocationId
+      NetworkInterfaceId: !Ref LinuxNetworkInterface
+
+  WindowsEIPAssociation:
+    Type: AWS::EC2::EIPAssociation
+    Properties:
+      AllocationId: !GetAtt WindowsEIP.AllocationId
+      NetworkInterfaceId: !Ref WindowsNetworkInterface
+
+  # Windows EC2 Instance
+  WindowsInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: 't3.large'
+      KeyName: !Ref KeyPairName
+      NetworkInterfaces:
+        - NetworkInterfaceId: !Ref WindowsNetworkInterface
+          DeviceIndex: 0
+      ImageId: !FindInMap [WindowsAMI, !Ref 'AWS::Region', AMI]
+      Tags:
+        - Key: Name
+          Value: 'awslab-win'
+      UserData:
+        Fn::Base64: !Sub |
+          <powershell>
+          # Your PowerShell script here
+          </powershell>
+
+  # Linux EC2 Instance
+  LinuxInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: 't3.large'
+      KeyName: !Ref KeyPairName
+      NetworkInterfaces:
+        - NetworkInterfaceId: !Ref LinuxNetworkInterface
+          DeviceIndex: 0
+      ImageId: !FindInMap [LinuxAMI, !Ref 'AWS::Region', AMI]
+      Tags:
+        - Key: Name
+          Value: 'awslab-linux'
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          # Your bash script here
+
+  # S3 Bucket
+  S3Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub
+        - 'awslabstore-${GUID}-${AWS::Region}'
+        - GUID: !Select [2, !Split ["/", !Ref "AWS::StackId"]]
+      Tags:
+        - Key: Name
+          Value: 'awslab-s3-bucket'
+
+  # IAM Role for Lambda Function
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'lambda-execution-role-${AWS::StackName}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Tags:
+        - Key: Name
+          Value: 'awslab-lambda-role'
+
+  # Lambda Function
+  LambdaFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub
+        - 'awslab-func-${GUID}'
+        - GUID: !Select [2, !Split ["/", !Ref "AWS::StackId"]]
+      Runtime: nodejs18.x
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Handler: index.handler
+      Code:
+        ZipFile: |
+          exports.handler = async (event) => {
+            return 'Hello from Lambda';
+          };
+      Tags:
+        - Key: Name
+          Value: 'awslab-function'
+
+  # ECR Repository (awslabcr-${GUID}/apps)
+  ECRRepositoryApps:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: !Sub
+        - 'awslabcr-${GUID}/apps'
+        - GUID: !Select [2, !Split ["/", !Ref "AWS::StackId"]]
+      Tags:
+        - Key: Name
+          Value: 'awslab-container-registry-apps'
+
+  # IAM Role for EKS Cluster
+  EKSClusterRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: eks.amazonaws.com
+            Action: 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonEKSClusterPolicy
+        - arn:aws:iam::aws:policy/AmazonEKSServicePolicy
+      Tags:
+        - Key: Name
+          Value: 'awslab-eks-cluster-role'
+
+  # EKS Cluster
+  EKSCluster:
+    Type: AWS::EKS::Cluster
+    Properties:
+      Name: 'awslab-eks'
+      Version: !Ref KubernetesVersion
+      RoleArn: !GetAtt EKSClusterRole.Arn
+      ResourcesVpcConfig:
+        SubnetIds:
+          - !Ref Subnet1
+          - !Ref Subnet2
+        SecurityGroupIds:
+          - !Ref SecurityGroup
+      Tags:
+        - Key: Name
+          Value: 'awslab-eks'
+
+  # IAM Role for EKS Node Group
+  EKSNodeGroupRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+            Action: 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy
+        - arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy
+        - arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly
+      Tags:
+        - Key: Name
+          Value: 'awslab-eks-nodegroup-role'
+
+  # EKS Node Group
+  EKSNodeGroup:
+    Type: AWS::EKS::Nodegroup
+    DependsOn:
+      - EKSCluster
+      - EKSNodeGroupRole
+    Properties:
+      ClusterName: !Ref EKSCluster
+      NodegroupName: 'awslab-nodegroup'
+      ScalingConfig:
+        DesiredSize: 2
+        MinSize: 1
+        MaxSize: 3
+      Subnets:
+        - !Ref Subnet1
+        - !Ref Subnet2
+      InstanceTypes:
+        - t3.medium
+      AmiType: AL2_x86_64
+      NodeRole: !GetAtt EKSNodeGroupRole.Arn
+      Tags:
+        Name: 'awslab-eks-nodegroup'
+
+  # Secrets Manager Secret
+  SecretsManagerSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub
+        - 'awslab-sm-${GUID}'
+        - GUID: !Select [2, !Split ["/", !Ref "AWS::StackId"]]
+      Description: 'Secret for storing sensitive data'
+      Tags:
+        - Key: Name
+          Value: 'awslab-sm'
+
+  # RDS Security Group
+  RDSSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: 'RDS Security Group'
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 1433
+          ToPort: 1433
+          CidrIp: '0.0.0.0/0'
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          FromPort: -1
+          ToPort: -1
+          CidrIp: '0.0.0.0/0'
+      Tags:
+        - Key: Name
+          Value: 'awslab-rds-sg'
+
+  # RDS Subnet Group
+  RDSSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: 'Subnet group for RDS instance'
+      SubnetIds:
+        - !Ref Subnet1
+        - !Ref Subnet2
+      Tags:
+        - Key: Name
+          Value: 'awslab-rds-subnet-group'
+
+  # RDS Instance
+  RDSInstance:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      DBInstanceIdentifier: !Sub
+        - 'awslab-sql-${GUID}'
+        - GUID: !Select [2, !Split ["/", !Ref "AWS::StackId"]]
+      AllocatedStorage: '20'
+      DBInstanceClass: db.t3.micro
+      Engine: sqlserver-ex
+      MasterUsername: !Ref Username
+      MasterUserPassword: !Ref Password
+      VPCSecurityGroups:
+        - !Ref RDSSecurityGroup
+      DBSubnetGroupName: !Ref RDSSubnetGroup
+      Tags:
+        - Key: Name
+          Value: 'awslab-sql'
+
+  # ECS Cluster
+  ECSCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: 'awslab-ecs'
+      Tags:
+        - Key: Name
+          Value: 'awslab-ecs'
+
+  # IAM Role for ECS Task Execution
+  ECSTaskExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ecs-tasks.amazonaws.com
+            Action: 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+      Policies:
+        - PolicyName: ECRAccessPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ecr:BatchCheckLayerAvailability
+                  - ecr:BatchGetImage
+                  - ecr:GetAuthorizationToken
+                  - ecr:GetDownloadUrlForLayer
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource:
+                  - !Sub
+                      - 'arn:aws:ecr:${AWS::Region}:${AWS::AccountId}:repository/awslabcr-${GUID}/apps'
+                      - GUID: !Select [2, !Split ["/", !Ref "AWS::StackId"]]
+                  - 'arn:aws:logs:*:*:*'
+              - Effect: Allow
+                Action:
+                  - ecr-public:GetAuthorizationToken
+                  - ecr-public:BatchCheckLayerAvailability
+                  - ecr-public:GetRepositoryPolicy
+                  - ecr-public:DescribeRepositories
+                  - ecr-public:DescribeImages
+                  - ecr-public:GetDownloadUrlForLayer
+                  - ecr-public:BatchGetImage
+                Resource:
+                  - '*'
+        - PolicyName: ECSExecPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ssm:DescribeSessions
+                  - ssm:GetConnectionStatus
+                  - ssm:StartSession
+                  - ssm:TerminateSession
+                  - ssmmessages:CreateControlChannel
+                  - ssmmessages:CreateDataChannel
+                  - ssmmessages:OpenControlChannel
+                  - ssmmessages:OpenDataChannel
+                Resource: '*'
+      Tags:
+        - Key: Name
+          Value: 'awslab-ecs-task-execution-role'
+
+  # IAM Role for ECS Task
+  ECSTaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ecs-tasks.amazonaws.com
+            Action: 'sts:AssumeRole'
+      Tags:
+        - Key: Name
+          Value: 'awslab-ecs-task-role'
+
+  # ECS Task Definition
+  ECSTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: 'ECSFargateTaskDefinition'
+      Cpu: '256'
+      Memory: '512'
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      ExecutionRoleArn: !GetAtt ECSTaskExecutionRole.Arn
+      TaskRoleArn: !GetAtt ECSTaskRole.Arn
+      ContainerDefinitions:
+        - Name: 'sample-app'
+          Image: 'public.ecr.aws/ecs-sample-image/amazon-ecs-sample:latest'
+          Essential: true
+          PortMappings:
+            - ContainerPort: 80
+              Protocol: tcp
+
+  # Load Balancer and Target Group
+  LoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Subnets:
+        - !Ref Subnet1
+        - !Ref Subnet2
+      SecurityGroups:
+        - !Ref ECSSecurityGroup
+      Tags:
+        - Key: Name
+          Value: 'awslab-ecs-lb'
+
+  TargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      VpcId: !Ref VPC
+      Port: 80
+      Protocol: HTTP
+      TargetType: ip
+      HealthCheckProtocol: HTTP
+      HealthCheckPort: '80'
+      HealthCheckPath: '/'
+      Matcher:
+        HttpCode: '200'
+      Tags:
+        - Key: Name
+          Value: 'awslab-ecs-tg'
+
+  Listener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref TargetGroup
+      LoadBalancerArn: !Ref LoadBalancer
+      Port: 80
+      Protocol: HTTP
+
+  # ECS Fargate Service
+  ECSFargateService:
+    Type: AWS::ECS::Service
+    DependsOn:
+      - Listener
+    Properties:
+      Cluster: !Ref ECSCluster
+      TaskDefinition: !Ref ECSTaskDefinition
+      DesiredCount: 1
+      LaunchType: FARGATE
+      EnableExecuteCommand: true
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          Subnets:
+            - !Ref Subnet1
+            - !Ref Subnet2
+          SecurityGroups:
+            - !Ref ECSSecurityGroup
+          AssignPublicIp: ENABLED
+      LoadBalancers:
+        - TargetGroupArn: !Ref TargetGroup
+          ContainerName: 'sample-app'
+          ContainerPort: 80
+
+Mappings:
+  # Windows AMI IDs
+  WindowsAMI:
+    us-east-1:
+      AMI: ami-0b0dcb5067f052a63  # Replace with the latest Windows AMI ID in your region
+    us-west-2:
+      AMI: ami-0f2b111cbeef9e332  # Replace with the latest Windows AMI ID in your region
+    # Add other regions as needed
+
+  # Linux AMI IDs
+  LinuxAMI:
+    us-east-1:
+      AMI: ami-0dba2cb6798deb6d8  # Replace with the latest Ubuntu AMI ID in your region
+    us-west-2:
+      AMI: ami-0c5204531f799e0c6  # Replace with the latest Ubuntu AMI ID in your region
+    # Add other regions as needed
+
+Outputs:
+  LinuxVMHostname:
+    Description: 'Linux VM Public IP'
+    Value: !GetAtt LinuxEIP.PublicIp
+
+  LinuxVMSSHCommand:
+    Description: 'Linux VM SSH Command'
+    Value: !Sub 'ssh -i /path/to/your/key.pem ubuntu@${LinuxEIP.PublicIp}'
+
+  WindowsVMUsername:
+    Description: 'Windows VM Username'
+    Value: !Ref Username
+
+  WindowsVMHostname:
+    Description: 'Windows VM Public IP'
+    Value: !GetAtt WindowsEIP.PublicIp
+
+  EKSClusterName:
+    Description: 'EKS Cluster Name'
+    Value: !Ref EKSCluster
+
+  ECSClusterName:
+    Description: 'ECS Cluster Name'
+    Value: !Ref ECSCluster
+
+  ECRRepositoryName:
+    Description: 'ECR Repository Name'
+    Value: !Ref ECRRepositoryApps
+
+  ECRRepositoryURI:
+    Description: 'ECR Repository URI'
+    Value: !GetAtt ECRRepositoryApps.RepositoryUri
+
+  AccountID:
+    Description: 'AWS Account ID'
+    Value: !Ref 'AWS::AccountId'
+
+  SecretsManagerSecretName:
+    Description: 'Secrets Manager Secret Name'
+    Value: !Ref SecretsManagerSecret
+
+  RDSInstanceEndpoint:
+    Description: 'RDS Instance Endpoint'
+    Value: !GetAtt RDSInstance.Endpoint.Address
+
+  LambdaFunctionName:
+    Description: 'Lambda Function Name'
+    Value: !Ref LambdaFunction
+
+  LoadBalancerDNSName:
+    Description: 'The DNS name of the ECS service load balancer'
+    Value: !GetAtt LoadBalancer.DNSName
+
+  ECSTaskExecutionRoleARN:
+    Description: 'ARN of the ECS Task Execution Role'
+    Value: !GetAtt ECSTaskExecutionRole.Arn
+
+  ECSTaskRoleARN:
+    Description: 'ARN of the ECS Task Role'
+    Value: !GetAtt ECSTaskRole.Arn
