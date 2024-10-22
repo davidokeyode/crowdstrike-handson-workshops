@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: tomcat.example.com
-  namespace: default
+  namespace: tomcat-webshell
   labels:
     app.kubernetes.io/created-by: crowdstrike
     app.kubernetes.io/name: tomcat.example.com
@@ -46,7 +46,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: tomcat-example-com
-  namespace: default
+  namespace: tomcat-webshell
   labels:
     app.kubernetes.io/created-by: crowdstrike
     app.kubernetes.io/name: tomcat-example-com
