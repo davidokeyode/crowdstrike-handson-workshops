@@ -1,9 +1,9 @@
-
 ---
 Title: 2b - Enable IOA for the Entra ID Tenant and Azure Subscriptions
 Description: Follow these instructions to provision your Azure tenant and subscriptions for Indicator of Attack (IOA) detection
 Author: David Okeyode
 ---
+
 # Module 2b - Enable IOA for the Entra ID Tenant and Azure Subscriptions
 
 ## Pre-Requisites
