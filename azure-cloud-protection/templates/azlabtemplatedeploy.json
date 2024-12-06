@@ -15,19 +15,22 @@
                 "description": "Provide password for resources"
             }
         },
+        "TrustedIP": {
+            "type": "string",
+            "metadata": {
+                "description": "Trusted IP address to allow access from"
+            }
+        },
         "aksVersion": {
             "type": "string",
             "metadata": {
                 "description": "Provide the version of Kubernetes to deploy"
             },
-            "defaultValue": "1.29.7",
+            "defaultValue": "1.30.6",
             "allowedValues": [
-                "1.29.7",
-                "1.29.6",
-                "1.29.5",
-                "1.30.0",
-                "1.30.1",
-                "1.30.2"
+                "1.30.6",
+                "1.31.1",
+                "1.31.2"
             ]
         },
         "storageAccountType": {
@@ -63,8 +66,8 @@
         }
     },
     "variables": {
-        "vmNameWindows": "azlab-win",
-        "vmNameLinux": "azlab-linux",
+        "vmNameWindows": "[toLower(concat('azlab-win-', uniqueString(subscription().subscriptionId)))]",
+        "vmNameLinux": "[toLower(concat('azlab-linux-', uniqueString(subscription().subscriptionId)))]",
         "vmSize": "Standard_D2s_v3",
         "vmSizeWin": "Standard_D2s_v3",
         "availabilitySetName": "azlab-as",
@@ -90,8 +93,8 @@
         "functionName": "[toLower(concat('azlab-fa-',uniqueString(subscription().subscriptionId)))]",
         "containerRegistryName": "[toLower(concat('azlabcr', uniqueString(subscription().subscriptionId)))]",
         "sqlServerName": "[toLower(concat('azlab-sql-',uniqueString(subscription().subscriptionId)))]",
-        "sqlDatabaseName": "azlab-db",
-        "aksClusterName": "azlab-aks",
+        "sqlDatabaseName": "[toLower(concat('azlab-db-', uniqueString(subscription().subscriptionId)))]",
+        "aksClusterName": "[toLower(concat('azlab-aks-', uniqueString(subscription().subscriptionId)))]",
         "aksDNSPrefix": "azlab-aks",
         "aksNetworkPlugin": "kubenet",
         "aksVNetName": "[concat(variables('aksClusterName'), '-vnet')]",
@@ -130,7 +133,7 @@
                             "destinationPortRange": 3389,
                             "sourcePortRange": "*",
                             "priority": 1000,
-                            "sourceAddressPrefix": "*"
+                            "sourceAddressPrefix": "[parameters('TrustedIP')]"
                         }
                     },
                     {
@@ -144,7 +147,7 @@
                             "destinationPortRange": 22,
                             "sourcePortRange": "*",
                             "priority": 1100,
-                            "sourceAddressPrefix": "*"
+                            "sourceAddressPrefix": "[parameters('TrustedIP')]"
                         }
                     }
                 ]
