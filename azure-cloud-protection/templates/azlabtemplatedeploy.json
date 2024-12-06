@@ -111,7 +111,8 @@
         "storageBlobDataContributorRoleId": "ba92f5b4-2d11-453d-a403-e96b0029c9fe",
         "storageRoleAssignmentId": "[guid(resourceGroup().id, variables('deploymentScriptIdentityName'), 'StorageAccountContributor')]",
         "acrRoleAssignmentId1": "[guid(resourceGroup().id, variables('deploymentScriptIdentityName'), 'ACRPush')]",
-        "acrRoleAssignmentId2": "[guid(resourceGroup().id, variables('deploymentScriptIdentityName'), 'ACROwner')]"
+        "acrRoleAssignmentId2": "[guid(resourceGroup().id, variables('deploymentScriptIdentityName'), 'ACROwner')]",
+        "subOwnerRoleAssignmentId": "[guid(subscription().id, variables('deploymentScriptIdentityName'), 'Owner')]"
     },
     "resources": [
         {
@@ -804,6 +805,19 @@
             ]
         },
         {
+            "type": "Microsoft.Authorization/roleAssignments",
+            "apiVersion": "2020-04-01-preview",
+            "name": "[variables('subOwnerRoleAssignmentId')]",
+            "properties": {
+                "roleDefinitionId": "[concat('/subscriptions/', subscription().subscriptionId, '/providers/Microsoft.Authorization/roleDefinitions/', '8e3af657-a8ff-443c-a75c-2fe8c4bcb635')]",
+                "principalId": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('deploymentScriptIdentityName'))).principalId]",
+                "principalType": "ServicePrincipal"
+            },
+                    "dependsOn": [
+                        "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('deploymentScriptIdentityName'))]"
+                    ]
+        },
+        {
             "type": "Microsoft.Resources/deploymentScripts",
             "apiVersion": "2020-10-01",
             "name": "importCsvToBlob",
@@ -952,7 +966,8 @@
                 "[resourceId('Microsoft.Network/publicIPAddresses', concat(variables('vmNameWindows'), '-pip'))]",
                 "[resourceId('Microsoft.Network/publicIPAddresses', concat(variables('vmNameLinux'), '-pip'))]",
                 "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('deploymentScriptIdentityName'))]",
-                "[resourceId('Microsoft.ContainerService/managedClusters', variables('aksClusterName'))]"
+                "[resourceId('Microsoft.ContainerService/managedClusters', variables('aksClusterName'))]",
+                "[resourceId('Microsoft.Authorization/roleAssignments', variables('subOwnerRoleAssignmentId'))]"
             ]
         },
         {
