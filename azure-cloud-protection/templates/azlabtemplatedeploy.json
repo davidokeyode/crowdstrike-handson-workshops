@@ -969,7 +969,7 @@
                 "[resourceId('Microsoft.Network/publicIPAddresses', concat(variables('vmNameLinux'), '-pip'))]",
                 "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('deploymentScriptIdentityName'))]",
                 "[resourceId('Microsoft.ContainerService/managedClusters', variables('aksClusterName'))]",
-                "[resourceId('Microsoft.Authorization/roleAssignments', variables('subOwnerRoleAssignmentId'))]"
+                "[concat('Microsoft.Authorization/roleAssignments/', variables('subOwnerRoleAssignmentId'))]"
             ]
         },
         {
