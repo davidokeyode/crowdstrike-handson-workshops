@@ -617,7 +617,7 @@
             "apiVersion": "2020-03-01",
             "dependsOn": [
                 "[resourceId('Microsoft.Network/virtualNetworks', variables('aksVNetName'))]",
-                "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('deploymentScriptIdentityName'))]",
+                "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('deploymentScriptIdentityName'))]"
             ],
             "type": "Microsoft.ContainerService/managedClusters",
             "location": "[resourceGroup().location]",
@@ -651,7 +651,7 @@
             "identity": {
                 "type": "UserAssigned",
                 "userAssignedIdentities": {
-                    "[format('{0}', resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('deploymentScriptIdentityName')))]": {}
+                    "[concat('/subscriptions/', subscription().subscriptionId, '/resourceGroups/', resourceGroup().name, '/providers/Microsoft.ManagedIdentity/userAssignedIdentities/', variables('deploymentScriptIdentityName'))]": {}
                 }
             }
         },
