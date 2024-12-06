@@ -66,8 +66,8 @@
         }
     },
     "variables": {
-        "vmNameWindows": "[toLower(concat('azlab-win-', uniqueString(subscription().subscriptionId)))]",
-        "vmNameLinux": "[toLower(concat('azlab-linux-', uniqueString(subscription().subscriptionId)))]",
+        "vmNameWindows": "[substring(concat('azlab-win-', uniqueString(subscription().subscriptionId)), 0, 15)]",
+        "vmNameLinux": "[toLower(concat('azlab-linux-', uniqueString(subscription().subscriptionId)), 0, 15)]",
         "vmSize": "Standard_D2s_v3",
         "vmSizeWin": "Standard_D2s_v3",
         "availabilitySetName": "azlab-as",
@@ -84,17 +84,17 @@
         "linuxOffer": "0001-com-ubuntu-server-focal",
         "linuxSku": "20_04-lts",
         "linuxPublisher": "Canonical",
-        "storageName": "[toLower(concat('azlabsa', uniqueString(subscription().subscriptionId)))]",
+        "storageName": "[toLower(concat('azlabsa', uniqueString(subscription().subscriptionId)), 0, 15)]",
         "blobContainerName": "confidential",
         "appServicePlanName": "azlab-splan",
         "funcAppServicePlanName": "azlab-splan-func",
-        "appServiceName": "[toLower(concat('azlab-app-', uniqueString(subscription().subscriptionId)))]",
-        "kvName": "[toLower(concat('azlab-kv-',uniqueString(subscription().subscriptionId)))]",
-        "functionName": "[toLower(concat('azlab-fa-',uniqueString(subscription().subscriptionId)))]",
-        "containerRegistryName": "[toLower(concat('azlabcr', uniqueString(subscription().subscriptionId)))]",
-        "sqlServerName": "[toLower(concat('azlab-sql-',uniqueString(subscription().subscriptionId)))]",
-        "sqlDatabaseName": "[toLower(concat('azlab-db-', uniqueString(subscription().subscriptionId)))]",
-        "aksClusterName": "[toLower(concat('azlab-aks-', uniqueString(subscription().subscriptionId)))]",
+        "appServiceName": "[toLower(concat('azlab-app-', uniqueString(subscription().subscriptionId)), 0, 15)]",
+        "kvName": "[toLower(concat('azlab-kv-',uniqueString(subscription().subscriptionId)), 0, 15)]",
+        "functionName": "[toLower(concat('azlab-fa-',uniqueString(subscription().subscriptionId)), 0, 15)]",
+        "containerRegistryName": "[toLower(concat('azlabcr', uniqueString(subscription().subscriptionId)), 0, 15)]",
+        "sqlServerName": "[toLower(concat('azlab-sql-',uniqueString(subscription().subscriptionId)), 0, 15)]",
+        "sqlDatabaseName": "[toLower(concat('azlab-db-', uniqueString(subscription().subscriptionId)), 0, 15)]",
+        "aksClusterName": "[toLower(concat('azlab-aks-', uniqueString(subscription().subscriptionId)), 0, 15)]",
         "aksDNSPrefix": "azlab-aks",
         "aksNetworkPlugin": "kubenet",
         "aksVNetName": "[concat(variables('aksClusterName'), '-vnet')]",
@@ -162,7 +162,7 @@
             "properties": {
                 "publicIPAllocationMethod": "Dynamic",
                 "dnsSettings": {
-                    "domainNameLabel": "[toLower(concat(variables('vmNameWindows'), uniqueString(subscription().subscriptionId)))]"
+                    "domainNameLabel": "[toLower(concat(variables('vmNameWindows'), uniqueString(subscription().subscriptionId)), 0, 15)]"
                 }
             }
         },
@@ -175,7 +175,7 @@
             "properties": {
                 "publicIPAllocationMethod": "Dynamic",
                 "dnsSettings": {
-                    "domainNameLabel": "[toLower(concat(variables('vmNameLinux'), uniqueString(subscription().subscriptionId)))]"
+                    "domainNameLabel": "[toLower(concat(variables('vmNameLinux'), uniqueString(subscription().subscriptionId)), 0, 15)]"
                 }
             }
         },
