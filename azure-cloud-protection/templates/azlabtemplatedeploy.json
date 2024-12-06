@@ -162,7 +162,7 @@
             "properties": {
                 "publicIPAllocationMethod": "Dynamic",
                 "dnsSettings": {
-                    "domainNameLabel": "[toLower(concat(variables('vmNameWindows'), uniqueString(subscription().subscriptionId)), 0, 15)]"
+                    "domainNameLabel": "[variables('vmNameWindows')]"
                 }
             }
         },
@@ -175,7 +175,7 @@
             "properties": {
                 "publicIPAllocationMethod": "Dynamic",
                 "dnsSettings": {
-                    "domainNameLabel": "[toLower(concat(variables('vmNameLinux'), uniqueString(subscription().subscriptionId)), 0, 15)]"
+                    "domainNameLabel": "[variables('vmNameLinux')]"
                 }
             }
         },
