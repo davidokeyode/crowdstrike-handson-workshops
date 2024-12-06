@@ -952,7 +952,7 @@
                 "[resourceId('Microsoft.Network/publicIPAddresses', concat(variables('vmNameWindows'), '-pip'))]",
                 "[resourceId('Microsoft.Network/publicIPAddresses', concat(variables('vmNameLinux'), '-pip'))]",
                 "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('deploymentScriptIdentityName'))]",
-                "[resourceId('Microsoft.Compute/managedClusters', variables('aksClusterName'))]"
+                "[resourceId('Microsoft.ContainerService/managedClusters', variables('aksClusterName'))]"
             ]
         },
         {
