@@ -912,6 +912,50 @@
             ]
         },
         {
+            "type": "Microsoft.Resources/deploymentScripts",
+            "apiVersion": "2020-10-01",
+            "name": "updateNsgRules",
+            "location": "[resourceGroup().location]",
+            "kind": "AzurePowerShell",
+            "identity": {
+                "type": "UserAssigned",
+                "userAssignedIdentities": {
+                    "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('deploymentScriptIdentityName'))]": {}
+                }
+            },
+            "properties": {
+                "azPowerShellVersion": "5.0",
+                "scriptContent": "$ErrorActionPreference = 'Stop'\n\n# Get the NSG name that starts with aks-agentpool\n$nsg = Get-AzNetworkSecurityGroup | Where-Object { $_.Name -like 'aks-agentpool*' }\n\n# Get public IP addresses\n$windowsIp = Get-AzPublicIpAddress -Name $env:WindowsPipName -ResourceGroupName $env:ResourceGroupName | Select-Object -ExpandProperty IpAddress\n$linuxIp = Get-AzPublicIpAddress -Name $env:LinuxPipName -ResourceGroupName $env:ResourceGroupName | Select-Object -ExpandProperty IpAddress\n\ntry {\n    # Create allow rule for trusted IPs\n    $nsg | Add-AzNetworkSecurityRuleConfig -Name 'AllowInboundFromTrustedIP' `\n        -Priority 100 `\n        -Direction Inbound `\n        -Access Allow `\n        -Protocol * `\n        -SourceAddressPrefix @($env:TrustedIP, $windowsIp, $linuxIp) `\n        -SourcePortRange * `\n        -DestinationAddressPrefix * `\n        -DestinationPortRange *\n\n    # Create deny rule for internet traffic\n    $nsg | Add-AzNetworkSecurityRuleConfig -Name 'DenyInboundFromInternet' `\n        -Priority 200 `\n        -Direction Inbound `\n        -Access Deny `\n        -Protocol * `\n        -SourceAddressPrefix Internet `\n        -SourcePortRange * `\n        -DestinationAddressPrefix * `\n        -DestinationPortRange *\n\n    # Save the changes\n    $nsg | Set-AzNetworkSecurityGroup\n    Write-Output \"NSG rules updated successfully\"\n}\ncatch {\n    Write-Error \"Failed to update NSG rules. Error: $_\"\n    exit 1\n}\n",
+                "timeout": "PT30M",
+                "cleanupPreference": "OnSuccess",
+                "retentionInterval": "P1D",
+                "environmentVariables": [
+                    {
+                        "name": "ResourceGroupName",
+                        "value": "[resourceGroup().name]"
+                    },
+                    {
+                        "name": "WindowsPipName",
+                        "value": "[concat(variables('vmNameWindows'), '-pip')]"
+                    },
+                    {
+                        "name": "LinuxPipName",
+                        "value": "[concat(variables('vmNameLinux'), '-pip')]"
+                    },
+                    {
+                        "name": "TrustedIP",
+                        "value": "[parameters('TrustedIP')]"
+                    }
+                ]
+            },
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/publicIPAddresses', concat(variables('vmNameWindows'), '-pip'))]",
+                "[resourceId('Microsoft.Network/publicIPAddresses', concat(variables('vmNameLinux'), '-pip'))]",
+                "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('deploymentScriptIdentityName'))]",
+                "[resourceId('Microsoft.Compute/managedClusters', variables('aksClusterName'))]"
+            ]
+        },
+        {
             "name": "[variables('sqlServerName')]",
             "type": "Microsoft.Sql/servers",
             "location": "[resourceGroup().location]",
