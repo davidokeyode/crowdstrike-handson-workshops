@@ -112,7 +112,7 @@
         "storageRoleAssignmentId": "[guid(resourceGroup().id, variables('deploymentScriptIdentityName'), 'StorageAccountContributor')]",
         "acrRoleAssignmentId1": "[guid(resourceGroup().id, variables('deploymentScriptIdentityName'), 'ACRPush')]",
         "acrRoleAssignmentId2": "[guid(resourceGroup().id, variables('deploymentScriptIdentityName'), 'ACROwner')]",
-        "subOwnerRoleAssignmentId": "[guid(variables('aksClusterName'), variables('deploymentScriptIdentityName'), 'Owner')]"
+        "subOwnerRoleAssignmentId": "[guid(subscription().subscriptionId, resourceGroup().name, variables('aksClusterName'), 'Owner')]"
     },
     "resources": [
         {
