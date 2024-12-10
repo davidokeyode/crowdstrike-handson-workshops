@@ -649,7 +649,7 @@
             },
             "tags": "[parameters('resourceTags')]",
             "identity": {
-                "type": "SystemAssigned",
+                "type": "SystemAssigned"
             }
         },
         {
