@@ -649,10 +649,7 @@
             },
             "tags": "[parameters('resourceTags')]",
             "identity": {
-                "type": "UserAssigned",
-                "userAssignedIdentities": {
-                    "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('deploymentScriptIdentityName')), '2018-11-30').id]": {}
-                }
+                "type": "SystemAssigned",
             }
         },
         {
