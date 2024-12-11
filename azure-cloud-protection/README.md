@@ -29,9 +29,9 @@ The workshop is designed to take approximately 5-6 hours to complete. It can be 
 | 04 | [Assess Container Images in a CICD Pipeline](modules/8a-image-assessment-cicd.md) | Hands on Lab |
 | 05 | [Protect Azure Container Registry (ACR) Images](modules/9a-protect-acr-images-password.md)  | Hands on Lab |
 | 06 | [Protect Azure Kubernetes Service (AKS) Workloads](modules/10a-protect-aks-workloads.md) | Hands on Lab |
-| 07 | [Protect Linux Hosts and Containers in Azure](modules/7-protect-linux-hosts-and-containers.md) | Hands on Lab |
+| 07 | [Protect Linux Hosts and Containers in Azure](modules/4a-protect-linux-ubuntu-vm.md) | Hands on Lab |
 | 08 | [Protect Windows Hosts and Containers in Azure](modules/8-protect-windows-hosts-and-containers.md) | Hands on Lab |
-| 09 | [Protect Serverless Container Workloads](modules/9-protect-acr-images.md)    | Hands on Lab |
+| 09 | [Protect Serverless Container Workloads](modules/13a-protect-aci-workloads.md)    | Hands on Lab |
 | 10 | [Implement Shift-Left Security in Azure DevOps](modules/12-implement-shift-left-security.md)    | Hands on Lab |
 | 11 | Wrap / Clean Up     | Hands on Lab |
 ----
