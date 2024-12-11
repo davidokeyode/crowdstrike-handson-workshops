@@ -2,7 +2,7 @@
 
 Welcome to the Falcon Cloud Security Azure workshop! The CrowdStrike Falcon platform offers a comprehensive CNAPP solution for protecting critical multi-cloud and cloud-native assets. It provides comprehensive visibility, threat detection and threat protection across your organization's hybrid, multi-cloud environment (AWS, Azure, GCP, Kubernetes, OpenShift). 
 
-![readme-prisma](./images/readme-falcon.png)
+![readme-falcon](./images/readme-falcon.png)
 
 This workshop was created as a walkthrough for an in person or virtual workshop, however you may feel free to run through it at your own pace.
 
