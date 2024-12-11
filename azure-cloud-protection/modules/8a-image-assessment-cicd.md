@@ -1,13 +1,4 @@
 
-
-
-
-
-> * Create an API client key pair
-> * Log into the Docker registry
-> * Push images for assessment
-> * Fetch image assessment reports
-
 ## APPROACH 1 - Push the image that you want to scan into the CrowdStrike container registry
 > * Add the source IP address to IP Allowlist Management
   * Falcon Console → Host setup and management → Falcon users → IP Allowlist Management

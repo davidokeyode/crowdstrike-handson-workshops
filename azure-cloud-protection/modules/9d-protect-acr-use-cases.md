@@ -1,9 +1,5 @@
 
 
-
-* Tag state: Filtered - what does this mean??
-
-
 Cloud security -> Policies -> Image assessment -> Create new policy
 * Name
 
