@@ -56,7 +56,7 @@ az login
 7. **Retrieve the credentials for your AKS cluster and verify the connection:**
 ```
 rg="azlab-rg"
-aks="azlab-aks"
+aks=$(az aks list --query "[?starts_with(name, 'azlab-aks')].name" -o tsv)
 az aks get-credentials --resource-group $rg --name $aks
 
 kubectl get nodes
