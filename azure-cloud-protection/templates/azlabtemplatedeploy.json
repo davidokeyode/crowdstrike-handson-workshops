@@ -641,7 +641,10 @@
                 "networkProfile": {
                     "loadBalancerSku": "standard",
                     "networkPlugin": "[variables('aksNetworkPlugin')]",
-                    "networkPolicy": "calico"
+                    "networkPolicy": "calico",
+                    "serviceCidr": "10.20.0.0/16",
+                    "dnsServiceIp": "10.20.0.10",
+                    "dockerBridgeCidr": "172.17.0.1/16"
                 }
             },
             "tags": "[parameters('resourceTags')]",
