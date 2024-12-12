@@ -954,8 +954,7 @@
                 "[resourceId('Microsoft.Network/publicIPAddresses', concat(variables('vmNameWindows'), '-pip'))]",
                 "[resourceId('Microsoft.Network/publicIPAddresses', concat(variables('vmNameLinux'), '-pip'))]",
                 "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('deploymentScriptIdentityName'))]",
-                "[resourceId('Microsoft.ContainerService/managedClusters', variables('aksClusterName'))]",
-                "[concat('Microsoft.Authorization/roleAssignments/', variables('subOwnerRoleAssignmentId'))]"
+                "[resourceId('Microsoft.ContainerService/managedClusters', variables('aksClusterName'))]"
             ]
         },
         {
