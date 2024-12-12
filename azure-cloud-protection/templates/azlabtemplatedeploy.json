@@ -633,18 +633,15 @@
                         "osType": "Linux",
                         "storageProfile": "ManagedDisks",
                         "type": "VirtualMachineScaleSets",
-                        "mode": "System"
+                        "mode": "System",
+                        "vnetSubnetID": "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('aksVNetName'), variables('aksSubnetName'))]"
                     }
                 ],
                 "nodeResourceGroup": "[variables('aksClusterName')]",
                 "networkProfile": {
                     "loadBalancerSku": "standard",
                     "networkPlugin": "[variables('aksNetworkPlugin')]",
-                    "networkPolicy": "calico",
-                    "serviceCidr": "10.0.0.0/16",
-                    "dnsServiceIP": "10.0.0.10",
-                    "dockerBridgeCidr": "172.17.0.1/16",
-                    "vnetSubnetID": "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('aksVNetName'), variables('aksSubnetName'))]"
+                    "networkPolicy": "calico"
                 }
             },
             "tags": "[parameters('resourceTags')]",
